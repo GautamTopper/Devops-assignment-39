@@ -70,28 +70,26 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
-                    bat '''
-                    echo Setting up kubeconfig...
-                    if not exist "%USERPROFILE%\\.kube" mkdir "%USERPROFILE%\\.kube"
-                    copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
-                    '''
+       stage('Deploy to Kubernetes') {
+    steps {
+        withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
+            bat """
+            echo Setting up kubeconfig...
+            if not exist "%USERPROFILE%\\.kube" mkdir "%USERPROFILE%\\.kube"
+            copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
 
-                    bat """
-                    echo Deploying to Kubernetes...
-                    kubectl apply -f k8s\\deployment.yaml --namespace %K8S_NAMESPACE%
-                    kubectl apply -f k8s\\service.yaml --namespace %K8S_NAMESPACE% || echo Service skipped
+            echo Deploying to Kubernetes...
+            kubectl apply -f k8s\\deployment.yaml --namespace ${env.K8S_NAMESPACE}
+            kubectl apply -f k8s\\service.yaml --namespace ${env.K8S_NAMESPACE}
 
-                    echo Updating image in deployment...
-                    kubectl set image deployment/ticket-booking-deployment ticket-booking-container=%DOCKER_IMAGE%:%DOCKER_TAG% --namespace %K8S_NAMESPACE%
-                    kubectl rollout status deployment/ticket-booking-deployment --namespace %K8S_NAMESPACE% --timeout=120s
-                    """
-                }
-            }
+            echo Updating image in deployment...
+            kubectl set image deployment/ticket-booking-deployment ticket-booking-container=${env.DOCKER_IMAGE}:${env.DOCKER_TAG} --namespace ${env.K8S_NAMESPACE}
+            kubectl rollout status deployment/ticket-booking-deployment --namespace ${env.K8S_NAMESPACE} --timeout=120s
+            """
         }
     }
+}
+
 
     post {
         success {
