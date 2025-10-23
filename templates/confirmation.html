@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Reservation Confirmed!</h2>
+<p>Reference: {{ booking.ref }}</p>
+<p>Event: {{ booking.event }}</p>
+<p>Venue: {{ booking.venue }}</p>
+<p>Date: {{ booking.date }}</p>
+<p>Time: {{ booking.time }}</p>
+<p>Seats: {{ booking.seats }}</p>
+<p>Total: ₹{{ booking.total }}</p>
+<a href="{{ url_for('home') }}">Back to Home</a>
+{% endblock %}

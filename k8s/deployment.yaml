@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devopsproject
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devopsproject
+  template:
+    metadata:
+      labels:
+        app: devopsproject
+    spec:
+      containers:
+      - name: devopsproject
+        image: yourdockerhubuser/devopsproject:latest
+        ports:
+        - containerPort: 5000

@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Reserve Tickets - {{ event.name }}</h2>
+<form method="POST">
+    <label>Name:</label><input name="user" required><br>
+    <label>Email:</label><input name="email" type="email" required><br>
+    <label>Date:</label><input name="date" type="date" required><br>
+    <label>Seats:</label><input name="seats" type="number" min="1" max="6" required><br>
+    <button type="submit">Reserve</button>
+</form>
+{% endblock %}

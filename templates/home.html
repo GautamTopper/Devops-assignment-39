@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Available Events</h2>
+<div class="event-list">
+    {% for e in events %}
+        <div class="card">
+            <h3>{{ e.name }}</h3>
+            <p>Venue: {{ e.venue }}</p>
+            <p>Time: {{ e.time }}</p>
+            <p>Price: ₹{{ e.price }}</p>
+            <a href="{{ url_for('reserve', event_id=e.id) }}">Reserve Now</a>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>My Reservations</h2>
+{% if reservations %}
+<table>
+    <tr><th>Ref</th><th>Name</th><th>Event</th><th>Seats</th><th>Total</th></tr>
+    {% for r in reservations %}
+        <tr>
+            <td>{{ r.ref }}</td>
+            <td>{{ r.user }}</td>
+            <td>{{ r.event }}</td>
+            <td>{{ r.seats }}</td>
+            <td>₹{{ r.total }}</td>
+        </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No reservations made yet.</p>
+{% endif %}
+{% endblock %}
