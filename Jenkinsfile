@@ -41,13 +41,14 @@ pipeline {
                     // Run container
                     bat "docker run -d --name test-app -p 5000:5000 %DOCKER_IMAGE%:%DOCKER_TAG%"
 
-                    // Wait for app startup (adjust if needed)
-                    bat 'ping 127.0.0.1 -n 10 >nul'
+                    // Wait for app startup
+                    bat "ping 127.0.0.1 -n 10 >nul"
 
-                    // Health checks (fail build if not reachable)
-                    def health1 = bat(script: 'powershell -Command "curl http://localhost:5000/health -UseBasicParsing"', returnStatus: true)
-                    def health2 = bat(script: 'powershell -Command "curl http://localhost:5000/ -UseBasicParsing"', returnStatus: true)
-                    if (health1 != 0 || health2 != 0) {
+                    // Health check using PowerShell curl
+                    def status1 = bat(script: 'powershell -Command "(Invoke-WebRequest http://localhost:5000/health).StatusCode"', returnStatus: true)
+                    def status2 = bat(script: 'powershell -Command "(Invoke-WebRequest http://localhost:5000/).StatusCode"', returnStatus: true)
+                    
+                    if (status1 != 0 || status2 != 0) {
                         error("❌ Health check failed!")
                     }
 
@@ -62,7 +63,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dock-id-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     bat """
                     echo Pushing Docker images...
-                    docker login -u %DOCKER_USER% -p %DOCKER_PASS%
+                    echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
                     docker push %DOCKER_IMAGE%:%DOCKER_TAG%
                     docker push %DOCKER_IMAGE%:latest
                     """
@@ -70,26 +71,26 @@ pipeline {
             }
         }
 
-       stage('Deploy to Kubernetes') {
-    steps {
-        withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
-            bat """
-            echo Setting up kubeconfig...
-            if not exist "%USERPROFILE%\\.kube" mkdir "%USERPROFILE%\\.kube"
-            copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
+                    bat """
+                    echo Setting up kubeconfig...
+                    if not exist "%USERPROFILE%\\.kube" mkdir "%USERPROFILE%\\.kube"
+                    copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
 
-            echo Deploying to Kubernetes...
-            kubectl apply -f k8s\\deployment.yaml --namespace ${env.K8S_NAMESPACE}
-            kubectl apply -f k8s\\service.yaml --namespace ${env.K8S_NAMESPACE}
+                    echo Applying Kubernetes manifests...
+                    kubectl apply -f k8s\\deployment.yaml --namespace %K8S_NAMESPACE%
+                    kubectl apply -f k8s\\service.yaml --namespace %K8S_NAMESPACE%
 
-            echo Updating image in deployment...
-            kubectl set image deployment/ticket-booking-deployment ticket-booking-container=${env.DOCKER_IMAGE}:${env.DOCKER_TAG} --namespace ${env.K8S_NAMESPACE}
-            kubectl rollout status deployment/ticket-booking-deployment --namespace ${env.K8S_NAMESPACE} --timeout=120s
-            """
+                    echo Updating deployment image...
+                    kubectl set image deployment/ticket-booking-deployment ticket-booking-container=%DOCKER_IMAGE%:%DOCKER_TAG% --namespace %K8S_NAMESPACE%
+                    kubectl rollout status deployment/ticket-booking-deployment --namespace %K8S_NAMESPACE% --timeout=120s
+                    """
+                }
+            }
         }
     }
-}
-
 
     post {
         success {
