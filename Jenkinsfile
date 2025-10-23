@@ -2,70 +2,55 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "2004gautam/devopsproject"
-        K8S_NAMESPACE = "default"
-        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        DOCKER_USER = '2004gautam'
+        DOCKER_PASS = credentials('docker-hub-pass') // Jenkins secret
+        KUBECONFIG_FILE = credentials('kubeconfig-file') // Jenkins secret file
+        IMAGE_NAME = '2004gautam/devopsproject'
+        IMAGE_TAG  = '5'
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Source') {
             steps {
                 echo "🔄 Checking out source code..."
                 checkout scm
             }
         }
 
-        stage('Build Docker') {
+        stage('Build Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dock-id-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    bat """
-                    echo Logging into Docker Hub...
-                    echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
-
-                    echo Building Docker image...
-                    docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% .
-                    docker tag %DOCKER_IMAGE%:%DOCKER_TAG% %DOCKER_IMAGE%:latest
-                    """
-                }
+                bat """
+                echo Building Docker image...
+                docker build -t %IMAGE_NAME%:%IMAGE_TAG% .
+                docker tag %IMAGE_NAME%:%IMAGE_TAG% %IMAGE_NAME%:latest
+                """
             }
         }
 
-        stage('Test Application') {
+        stage('Test Docker Container') {
             steps {
-                script {
-                    echo "⚡ Testing Docker container..."
-
-                    // Remove old container safely
-                    bat "docker rm -f test-app || echo No existing container"
-
-                    // Run container
-                    bat "docker run -d --name test-app -p 5000:5000 %DOCKER_IMAGE%:%DOCKER_TAG%"
-
-                    // Wait for app startup
-                    bat "ping 127.0.0.1 -n 10 >nul"
-
-                    // Health check using PowerShell curl
-                    def status1 = bat(script: 'powershell -Command "(Invoke-WebRequest http://localhost:5000/health).StatusCode"', returnStatus: true)
-                    def status2 = bat(script: 'powershell -Command "(Invoke-WebRequest http://localhost:5000/).StatusCode"', returnStatus: true)
-                    
-                    if (status1 != 0 || status2 != 0) {
-                        error("❌ Health check failed!")
-                    }
-
-                    // Stop and remove container
-                    bat "docker stop test-app && docker rm test-app"
-                }
+                bat """
+                echo ⚡ Testing Docker container...
+                docker rm -f test-app || echo No existing container
+                docker run -d --name test-app -p 5000:5000 %IMAGE_NAME%:%IMAGE_TAG%
+                ping 127.0.0.1 -n 10 > nul
+                powershell -Command "(Invoke-WebRequest http://localhost:5000/health).StatusCode"
+                powershell -Command "(Invoke-WebRequest http://localhost:5000/).StatusCode"
+                docker stop test-app && docker rm test-app
+                """
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dock-id-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-pass', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                     bat """
+                    echo Logging into Docker Hub...
+                    echo %PASS% | docker login -u %USER% --password-stdin
+
                     echo Pushing Docker images...
-                    echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
-                    docker push %DOCKER_IMAGE%:%DOCKER_TAG%
-                    docker push %DOCKER_IMAGE%:latest
+                    docker push %IMAGE_NAME%:%IMAGE_TAG%
+                    docker push %IMAGE_NAME%:latest
                     """
                 }
             }
@@ -73,19 +58,21 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
+                withCredentials([file(credentialsId: 'kubeconfig-file', variable: 'KUBECONFIG_FILE')]) {
                     bat """
                     echo Setting up kubeconfig...
                     if not exist "%USERPROFILE%\\.kube" mkdir "%USERPROFILE%\\.kube"
                     copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
 
                     echo Applying Kubernetes manifests...
-                    kubectl apply -f k8s\\deployment.yaml --namespace %K8S_NAMESPACE%
-                    kubectl apply -f k8s\\service.yaml --namespace %K8S_NAMESPACE%
+                    kubectl apply -f k8s\\deployment.yaml --namespace default --validate=false
+                    kubectl apply -f k8s\\service.yaml --namespace default --validate=false
 
                     echo Updating deployment image...
-                    kubectl set image deployment/ticket-booking-deployment ticket-booking-container=%DOCKER_IMAGE%:%DOCKER_TAG% --namespace %K8S_NAMESPACE%
-                    kubectl rollout status deployment/ticket-booking-deployment --namespace %K8S_NAMESPACE% --timeout=120s
+                    kubectl set image deployment/ticket-booking-deployment ticket-booking-container=%IMAGE_NAME%:%IMAGE_TAG% --namespace default
+
+                    echo Checking rollout status...
+                    kubectl rollout status deployment/ticket-booking-deployment --namespace default --timeout=120s
                     """
                 }
             }
@@ -93,15 +80,15 @@ pipeline {
     }
 
     post {
-        success {
-            echo "✅ SUCCESS: Build ${env.BUILD_NUMBER} completed."
-        }
-        failure {
-            echo "❌ FAILED: Build ${env.BUILD_NUMBER}."
-        }
         always {
             echo "🧹 Cleaning up Docker images..."
-            bat "docker image prune -f"
+            bat 'docker image prune -f'
+        }
+        success {
+            echo "✅ Pipeline succeeded!"
+        }
+        failure {
+            echo "❌ Pipeline failed!"
         }
     }
 }
