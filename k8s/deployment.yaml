@@ -13,7 +13,7 @@ spec:
         app: devopsproject
     spec:
       containers:
-      - name: devopsproject
-        image: 2004gautam/devopsproject:latest
-        ports:
-        - containerPort: 5000
+        - name: devopsproject
+          image: 2004gautam/devopsproject:latest
+          ports:
+            - containerPort: 5000
