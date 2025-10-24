@@ -91,7 +91,7 @@ pipeline {
         }
 
         // ========================
-        // Stage 5: Deploy to Kubernetes
+        // Stage 5: Deploy to Kubernetes - FIX APPLIED HERE
         // ========================
         stage('Deploy to Kubernetes') {
             steps {
@@ -101,15 +101,24 @@ pipeline {
                     if not exist "%USERPROFILE%\\.kube" mkdir "%USERPROFILE%\\.kube"
                     copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
 
+                    :: Get Minikube IP address and set as an environment variable
+                    echo 🔍 Getting Minikube IP address...
+                    @FOR /F "tokens=*" %%i IN ('minikube ip') DO @SET MINIKUBE_IP=%%i
+                    echo Minikube IP: %MINIKUBE_IP%
+                    
+                    :: Construct the full server URL for explicit kubectl use
+                    SET KUBERNETES_SERVER_URL=https://%MINIKUBE_IP%:8443
+                    echo Kubernetes Server URL: %KUBERNETES_SERVER_URL%
+                    
                     echo Applying Kubernetes manifests...
-                    kubectl apply -f k8s\\deployment.yaml --namespace %K8S_NAMESPACE% --validate=false
-                    kubectl apply -f k8s\\service.yaml --namespace %K8S_NAMESPACE% --validate=false
+                    kubectl apply -f k8s\\deployment.yaml --server=%KUBERNETES_SERVER_URL% --namespace %K8S_NAMESPACE% --validate=false
+                    kubectl apply -f k8s\\service.yaml --server=%KUBERNETES_SERVER_URL% --namespace %K8S_NAMESPACE% --validate=false
 
                     echo Updating deployment image...
-                    kubectl set image deployment/ticket-booking-deployment ticket-booking-container=%DOCKER_IMAGE%:%DOCKER_TAG% --namespace %K8S_NAMESPACE%
+                    kubectl set image deployment/ticket-booking-deployment ticket-booking-container=%DOCKER_IMAGE%:%DOCKER_TAG% --server=%KUBERNETES_SERVER_URL% --namespace %K8S_NAMESPACE%
 
                     echo Waiting for rollout to complete...
-                    kubectl rollout status deployment/ticket-booking-deployment --namespace %K8S_NAMESPACE% --timeout=120s
+                    kubectl rollout status deployment/ticket-booking-deployment --server=%KUBERNETES_SERVER_URL% --namespace %K8S_NAMESPACE% --timeout=120s
                     """
                 }
             }
