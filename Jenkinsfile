@@ -91,7 +91,7 @@ pipeline {
         }
 
         // ========================
-        // Stage 5: Deploy to Kubernetes - FIX APPLIED HERE
+        // Stage 5: Deploy to Kubernetes (Minikube Start Added)
         // ========================
         stage('Deploy to Kubernetes') {
             steps {
@@ -100,6 +100,10 @@ pipeline {
                     echo Setting up kubeconfig...
                     if not exist "%USERPROFILE%\\.kube" mkdir "%USERPROFILE%\\.kube"
                     copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
+
+                    :: === CRITICAL FIX: Start Minikube before querying IP ===
+                    echo 🚀 Ensuring Minikube cluster is running...
+                    minikube start
 
                     :: Get Minikube IP address and set as an environment variable
                     echo 🔍 Getting Minikube IP address...
