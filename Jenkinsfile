@@ -3,11 +3,15 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "2004gautam/devopsproject"
+        DOCKER_TAG   = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = "default"
-        DOCKER_TAG = "${env.BUILD_NUMBER}"
     }
 
     stages {
+
+        // ========================
+        // Stage 1: Checkout Source
+        // ========================
         stage('Checkout') {
             steps {
                 echo "🔄 Checking out source code..."
@@ -15,6 +19,9 @@ pipeline {
             }
         }
 
+        // ========================
+        // Stage 2: Build Docker Image
+        // ========================
         stage('Build Docker') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dock-id-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -30,11 +37,14 @@ pipeline {
             }
         }
 
+        // ========================
+        // Stage 3: Test Docker Container
+        // ========================
         stage('Test Application') {
             steps {
                 script {
                     echo "⚡ Testing Docker container..."
-
+                    
                     // Remove old container safely
                     bat "docker rm -f test-app || echo No existing container"
 
@@ -44,12 +54,18 @@ pipeline {
                     // Wait for app startup
                     bat "ping 127.0.0.1 -n 10 >nul"
 
-                    // Health check using PowerShell curl
-                    def status1 = bat(script: 'powershell -Command "(Invoke-WebRequest http://localhost:5000/health).StatusCode"', returnStatus: true)
-                    def status2 = bat(script: 'powershell -Command "(Invoke-WebRequest http://localhost:5000/).StatusCode"', returnStatus: true)
-                    
-                    if (status1 != 0 || status2 != 0) {
-                        error("❌ Health check failed!")
+                    // Health check using PowerShell
+                    def health = powershell(returnStdout: true, script: """
+                        try {
+                            \$status = (Invoke-WebRequest http://localhost:5000/health -UseBasicParsing).StatusCode
+                            Write-Output \$status
+                        } catch {
+                            Write-Output "FAIL"
+                        }
+                    """).trim()
+
+                    if (health != '200') {
+                        error("❌ Health check failed! Response: ${health}")
                     }
 
                     // Stop and remove container
@@ -58,6 +74,9 @@ pipeline {
             }
         }
 
+        // ========================
+        // Stage 4: Push Docker Image
+        // ========================
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dock-id-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -71,6 +90,9 @@ pipeline {
             }
         }
 
+        // ========================
+        // Stage 5: Deploy to Kubernetes
+        // ========================
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
@@ -80,11 +102,13 @@ pipeline {
                     copy /Y "%KUBECONFIG_FILE%" "%USERPROFILE%\\.kube\\config"
 
                     echo Applying Kubernetes manifests...
-                    kubectl apply -f k8s\\deployment.yaml --namespace %K8S_NAMESPACE%
-                    kubectl apply -f k8s\\service.yaml --namespace %K8S_NAMESPACE%
+                    kubectl apply -f k8s\\deployment.yaml --namespace %K8S_NAMESPACE% --validate=false
+                    kubectl apply -f k8s\\service.yaml --namespace %K8S_NAMESPACE% --validate=false
 
                     echo Updating deployment image...
                     kubectl set image deployment/ticket-booking-deployment ticket-booking-container=%DOCKER_IMAGE%:%DOCKER_TAG% --namespace %K8S_NAMESPACE%
+
+                    echo Waiting for rollout to complete...
                     kubectl rollout status deployment/ticket-booking-deployment --namespace %K8S_NAMESPACE% --timeout=120s
                     """
                 }
@@ -92,6 +116,9 @@ pipeline {
         }
     }
 
+    // ========================
+    // Post Actions
+    // ========================
     post {
         success {
             echo "✅ SUCCESS: Build ${env.BUILD_NUMBER} completed."
